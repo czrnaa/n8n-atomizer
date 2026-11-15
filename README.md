@@ -23,6 +23,16 @@ Content planning often starts as scattered notes and becomes difficult to organi
 
 The central design choice is non-destructive similarity handling: a related idea is flagged and given a new family identifier, rather than being merged into an existing family automatically.
 
+## Team
+
+| Team member | Role | Contribution |
+| --- | --- | --- |
+| Alex Rivera | AI Automation and Integration Engineer | Built the AI clarification logic, led the main n8n workflow integration, supported final validation, and created the pitch presentation. |
+| Jordan Lee | Workflow and Data Automation Engineer | Developed the non-destructive similarity engine, worked on the Sheets and Calendar pipeline, organized the n8n nodes, and tested data integrity. |
+| Sam Patel | AI Communication Automation Developer | Worked on the Gmail digest and creator communication, improved email formatting, and collaborated on the clarification flow. |
+
+Names above are placeholders and should be replaced with the teammates' preferred names before final portfolio use.
+
 ## Architecture
 
 ```text
