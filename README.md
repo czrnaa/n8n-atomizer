@@ -41,6 +41,10 @@ HTTP notes
     -> Gmail digest
 ```
 
+![Atomizer workflow architecture](assets/atomizer-workflow-architecture.png)
+
+The diagram summarizes the end-to-end flow, including the non-destructive similarity decision and the external service boundaries.
+
 The workflow contains 43 nodes in the supplied export, including HTTP, Gemini, Google Sheets, Google Calendar, Gmail, code, branching, merge, loop, and structured-output nodes.
 
 See the detailed documentation:
