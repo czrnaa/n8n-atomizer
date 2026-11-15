@@ -1,0 +1,21 @@
+# Local and sensitive workflow material
+.env
+.env.*
+!.env.example
+credentials.json
+secrets/
+private/
+raw-data/
+exports/private/
+assets/unreviewed/
+
+# Raw source material belongs in private/ until reviewed and sanitized.
+
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Local media or captures that have not been reviewed for privacy
+*.local.png
+*.local.mp4
