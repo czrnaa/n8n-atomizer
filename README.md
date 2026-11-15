@@ -66,6 +66,22 @@ See the detailed documentation:
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 
+## Workflow and visual references
+
+The sanitized n8n workflow export is available at [workflows/atomizer-sanitized.json](workflows/atomizer-sanitized.json). It is designed for inspection and reconstruction, not immediate production use. Setup notes and required placeholder replacements are documented in [workflows/README.md](workflows/README.md).
+
+### Workflow overview
+
+![Atomizer n8n workflow overview](assets/workflow/workflow-overview.png)
+
+### Similarity engine detail
+
+![Non-destructive similarity engine](assets/workflow/similarity-engine-detail.png)
+
+### Deduplication and digest detail
+
+![Deduplication and digest flow](assets/workflow/execution-loop-detail.png)
+
 ## Repository structure
 
 ```text

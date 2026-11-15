@@ -1,0 +1,1793 @@
+{
+  "name": "[CtrlAltDel] Track B – AI-Driven Task & Inbox Organizer",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -608,
+        976
+      ],
+      "id": "623e20fe-0531-40a7-a1ac-8b23eae5ef0e",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://example.invalid/webhook/creator-notes",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -384,
+        976
+      ],
+      "id": "5ba68a0e-4edc-4fe7-a752-f1830e29155a",
+      "name": "Raw Notes"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "submissions",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1.1,
+      "position": [
+        -160,
+        976
+      ],
+      "id": "92afc60c-3045-4725-9b45-59fe384788f1",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "text": "={{$json.input_text}}",
+        "attributes": {
+          "attributes": [
+            {
+              "name": "anchor_format",
+              "description": "Exactly one of: youtube_long, short_video, blog_post, linkedin_post. youtube_long = a video of roughly 8 minutes or more. short_video = a tip, snippet or clip under 2 minutes. blog_post = a written article, essay, guide or tutorial. linkedin_post = a short text post or bullet-point thought piece. Use an empty string if the note does not make the format reasonably clear.",
+              "required": true
+            },
+            {
+              "name": "anchor_title",
+              "description": "Working title of the main piece, under 70 characters, in the creator's voice.",
+              "required": true
+            },
+            {
+              "name": "anchor_hook",
+              "description": "The opening line of the main piece, under 120 characters."
+            },
+            {
+              "name": "core_angle",
+              "description": "The single idea the whole content family is about, in one sentence.",
+              "required": true
+            },
+            {
+              "name": "audience",
+              "description": "Who this is for, in a few words."
+            },
+            {
+              "name": "tone",
+              "description": "The voice in a few words, such as direct, calm or playful."
+            },
+            {
+              "name": "hook_short_video",
+              "description": "Opening line for a 30 to 60 second vertical video, under 100 characters."
+            },
+            {
+              "name": "hook_linkedin",
+              "description": "Opening line for a LinkedIn text post, under 120 characters."
+            },
+            {
+              "name": "hook_carousel",
+              "description": "Title of the first slide of an Instagram carousel, under 60 characters."
+            },
+            {
+              "name": "hook_blog",
+              "description": "Headline for a blog article, under 80 characters."
+            },
+            {
+              "name": "needs_clarification",
+              "type": "boolean",
+              "description": "true only when a real decision is missing that you cannot reasonably guess, such as the format being unclear or the note holding two different ideas. false whenever you can make a sensible plan.",
+              "required": true
+            },
+            {
+              "name": "question",
+              "description": "When needs_clarification is true, one specific question for the creator that names the options. Otherwise an empty string."
+            }
+          ]
+        },
+        "options": {
+          "systemPromptTemplate": "You are the content strategist for a solo creator. You read one rough note and plan a content family: one main piece plus short pieces that reuse its single idea on other platforms.\n\nRules:\n- Never invent facts, numbers, results or claims that are not in the note.\n- Keep every hook specific to this note's topic. No generic hooks.\n- Do not decide dates or schedules. Another system does that.\n- If the input contains CREATOR FEEDBACK, apply it exactly and keep everything from YOUR PREVIOUS PLAN that the feedback did not change.\n- Set needs_clarification to true only when a real decision is missing. If you can make a good plan, set it to false and move on.\n- If you do not know the value of an attribute, return an empty string for it."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        704,
+        1216
+      ],
+      "id": "29334b17-bfcf-4c40-885a-e656751e7242",
+      "name": "Information Extractor",
+      "retryOnFail": true,
+      "maxTries": 4,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        512,
+        976
+      ],
+      "id": "1edeb4fe-0e2e-46d9-b979-8cd082e9409e",
+      "name": "Limit"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-flash-lite-latest",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        720,
+        1456
+      ],
+      "id": "e5f3443e-8ae3-44cb-af2c-98c8f00fc9ee",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// NODE: Plan Input | Mode: Run Once for Each Item | Language: JavaScript\nconst REVIEW_ALL = true; // true = ask for approval on EVERY note (use for the demo)\nconst MAX_ROUNDS = 2;     // most back-and-forth rounds per note\n\nconst j = $json;\nconst prior = j.prior_plan ?? null;\nconst feedback = j.feedback ?? '';\n\nlet input = 'CREATOR NOTE:\\n' + j.raw_note;\nif (prior) input += '\\n\\nYOUR PREVIOUS PLAN:\\n' + JSON.stringify(prior, null, 2);\nif (feedback) input += '\\n\\nCREATOR FEEDBACK (apply it, keep everything they did not change):\\n' + feedback;\n\nreturn {\n  json: {\n    submission_id: j.submission_id,\n    creator_name: j.creator_name ?? j.creator?.name ?? '',\n    creator_email: j.creator_email ?? j.creator?.email ?? '',\n    raw_note: j.raw_note,\n    round: j.round ?? 0,\n    feedback,\n    approved: j.approved ?? false,\n    timed_out: j.timed_out ?? false,\n    prior_plan: prior,\n    review_all: REVIEW_ALL,\n    max_rounds: MAX_ROUNDS,\n    input_text: input,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        1216
+      ],
+      "id": "b255687e-36b1-422c-86f1-942ebc564b4c",
+      "name": "Plan Input"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// NODE: Map Plan | Mode: Run Once for Each Item | Language: JavaScript\nconst state = $('Plan Input').last().json; // batch size is 1, so the last run is this note\nconst ai = $json.output ?? {};\nconst FORMATS = ['youtube_long', 'short_video', 'blog_post', 'linkedin_post'];\nconst clean = (v) => (typeof v === 'string' ? v.trim() : '');\n\nlet plan;\nlet flagged;\nif (state.approved && state.prior_plan) {\n  plan = state.prior_plan;            // you approved it: keep it exactly\n  flagged = state.timed_out === true; // a timeout is not an approval\n} else {\n  plan = {\n    anchor_format: clean(ai.anchor_format).toLowerCase().replace(/[^a-z_]/g, ''),\n    anchor_title: clean(ai.anchor_title),\n    anchor_hook: clean(ai.anchor_hook),\n    core_angle: clean(ai.core_angle),\n    audience: clean(ai.audience),\n    tone: clean(ai.tone),\n    hook_short_video: clean(ai.hook_short_video),\n    hook_linkedin: clean(ai.hook_linkedin),\n    hook_carousel: clean(ai.hook_carousel),\n    hook_blog: clean(ai.hook_blog),\n  };\n  const missing = [];\n  if (!FORMATS.includes(plan.anchor_format)) missing.push('format');\n  if (!plan.anchor_title) missing.push('title');\n  if (!plan.core_angle) missing.push('angle');\n  const aiFlag = ai.needs_clarification === true || String(ai.needs_clarification).toLowerCase() === 'true';\n  flagged = aiFlag || missing.length > 0;\n  plan._missing = missing;\n  plan._question = clean(ai.question);\n}\n\nconst roundsLeft = state.round < state.max_rounds;\nconst wantsInput = !state.approved && (flagged || state.review_all);\nconst needs_input = wantsInput && roundsLeft;\nconst needs_review = flagged && !needs_input; // still unresolved, nobody left to ask\n\nconst question =\n  plan._question ||\n  (plan._missing && plan._missing.includes('format')\n    ? 'Which format should the main piece be: a long YouTube video, a short video, a blog post, or a LinkedIn post?'\n    : 'Anything you want changed in this plan? Reply OK to approve.');\n\nreturn {\n  json: {\n    submission_id: state.submission_id,\n    creator_name: state.creator_name,\n    creator_email: state.creator_email,\n    raw_note: state.raw_note,\n    round: state.round,\n    max_rounds: state.max_rounds,\n    plan,\n    question,\n    needs_input,\n    needs_review,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        1216
+      ],
+      "id": "787ae1c7-749e-427e-bd59-64307d33682b",
+      "name": "Map Plan"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        736,
+        976
+      ],
+      "id": "1b015ee8-9276-46e7-b38e-390df4b02e7b",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "sendTo": "creator@example.invalid",
+        "subject": "={{ 'Atomizer: input needed — ' + $json.plan.anchor_title }}",
+        "message": "={{ [\n  'Hi ' + $json.creator_name + ',',\n  '',\n  'Please review this proposed content plan:',\n  'Title: ' + $json.plan.anchor_title,\n  'Format: ' + ($json.plan.anchor_format || 'Not chosen yet'),\n  'Angle: ' + $json.plan.core_angle,\n  'Audience: ' + $json.plan.audience,\n  '',\n  $json.question,\n  '',\n  'Use the response button below to submit your answer.',\n  'Describe any changes, or enter OK to keep the current plan.'\n].join('\\n') }}",
+        "responseType": "freeText",
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "resumeAmount": 15,
+              "resumeUnit": "minutes"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -32,
+        1472
+      ],
+      "id": "8dad0fb7-e7d9-464b-95e8-1683df76d77c",
+      "name": "Ask Creator",
+      "webhookId": "82863876-af32-4289-b8c3-2ae03ac452d4"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const s = $('Map Plan').last().json;\nconst d = $json.data ?? {};\n\nconst reply = String(\n  d.text ?? Object.values(d)[0] ?? ''\n).trim();\n\nconst timedOut = reply === '';\n\nconst approved =\n  timedOut ||\n  /^(ok|okay|approve|approved|yes|y|looks good|lgtm|go|ship it)[\\s.!]*$/i.test(reply);\n\nreturn {\n  json: {\n    submission_id: s.submission_id,\n    creator_name: s.creator_name,\n    creator_email: s.creator_email,\n    raw_note: s.raw_note,\n    round: timedOut ? s.max_rounds : s.round + 1,\n    feedback: approved ? '' : reply,\n    approved,\n    timed_out: timedOut,\n    prior_plan: s.plan,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        1472
+      ],
+      "id": "843645cd-65b7-4e3b-b7f8-686167862a82",
+      "name": "Read Reply"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json);\nif (!rows.length) return [];\n\nconst escape = value => String(value ?? '')\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;')\n  .replace(/'/g, '&#39;');\n\nconst groups = new Map();\n\nfor (const row of rows) {\n  if (!row.submission_id || !row.piece_id) {\n    throw new Error('Digest input is missing submission_id or piece_id.');\n  }\n\n  if (!groups.has(row.submission_id)) {\n    groups.set(row.submission_id, []);\n  }\n\n  groups.get(row.submission_id).push(row);\n}\n\nconst isReview = piece =>\n  String(piece.status ?? '').trim().toLowerCase() === 'needs review';\n\nconst badge = review => `\n  <span style=\"\n    display:inline-block;\n    padding:4px 9px;\n    border-radius:4px;\n    font-size:12px;\n    font-weight:bold;\n    background:${review ? '#fff3d6' : '#e8f4f1'};\n    color:${review ? '#805600' : '#25695e'};\n  \">\n    ${review ? 'Needs review' : 'Planned'}\n  </span>\n`;\n\nconst sections = [...groups.entries()].map(([id, pieces]) => {\n  const anchor = pieces.find(\n    piece => String(piece.role).toLowerCase() === 'anchor'\n  ) || pieces[0];\n\n  const cards = pieces.map(piece => `\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\"\n      cellspacing=\"0\" style=\"\n        border:1px solid #dde7e4;\n        border-radius:6px;\n        margin-bottom:12px;\n        background:#ffffff;\n      \">\n      <tr>\n        <td style=\"padding:18px;\">\n          <p style=\"\n            margin:0 0 8px;\n            font-size:12px;\n            font-weight:bold;\n            color:#35786d;\n          \">\n            ${escape(piece.role)}\n          </p>\n\n          <h3 style=\"\n            margin:0 0 7px;\n            font-size:17px;\n            line-height:1.4;\n            color:#243733;\n          \">\n            ${escape(piece.title)}\n          </h3>\n\n          <p style=\"\n            margin:0 0 14px;\n            font-size:14px;\n            color:#65736f;\n          \">\n            ${escape(piece.platform)} &middot; ${escape(piece.format)}\n          </p>\n\n          <p style=\"\n            margin:0 0 5px;\n            font-size:14px;\n            color:#374741;\n          \">\n            <strong>Produce by:</strong> ${escape(piece.produce_by)}\n          </p>\n\n          <p style=\"\n            margin:0 0 14px;\n            font-size:14px;\n            color:#374741;\n          \">\n            <strong>Publish on:</strong> ${escape(piece.publish_on)}\n          </p>\n\n          ${isReview(piece)\n            ? badge(true)\n            : `<span style=\"\n                display:inline-block;\n                padding:4px 9px;\n                border-radius:4px;\n                background:#e8f4f1;\n                color:#25695e;\n                font-size:12px;\n                font-weight:bold;\n              \">${escape(piece.status || 'Status not provided')}</span>`\n          }\n        </td>\n      </tr>\n    </table>\n  `).join('');\n\n  return `\n    <h2 style=\"\n      margin:28px 0 8px;\n      font-size:20px;\n      line-height:1.4;\n      color:#243733;\n    \">\n      ${escape(anchor.title)}\n    </h2>\n\n    <p style=\"\n      margin:0 0 12px;\n      font-size:13px;\n      color:#65736f;\n    \">\n      ${escape(anchor.creator)} &middot; ${escape(id)}\n    </p>\n\n    ${pieces.some(isReview)\n      ? `<p style=\"margin:0 0 14px;\">${badge(true)}</p>`\n      : ''\n    }\n\n    ${cards}\n  `;\n}).join('');\n\nconst summary = `${rows.length} pieces planned from ${groups.size} notes`;\nconst reviewCount = rows.filter(isReview).length;\n\nreturn [{\n  json: {\n    subject: `Atomizer: ${summary}`,\n    html: `\n      <!DOCTYPE html>\n      <html>\n      <head>\n        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n      </head>\n      <body style=\"\n        margin:0;\n        padding:0;\n        background:#f4f7f6;\n        font-family:Arial,Helvetica,sans-serif;\n        color:#243733;\n      \">\n        <table role=\"presentation\" width=\"100%\"\n          cellpadding=\"0\" cellspacing=\"0\">\n          <tr>\n            <td align=\"center\" style=\"padding:20px 12px;\">\n              <table role=\"presentation\" width=\"100%\"\n                cellpadding=\"0\" cellspacing=\"0\" style=\"\n                  max-width:600px;\n                  background:#ffffff;\n                  border-top:4px solid #35786d;\n                \">\n                <tr>\n                  <td style=\"padding:26px 20px;\">\n                    <p style=\"\n                      margin:0 0 20px;\n                      font-size:12px;\n                      font-weight:bold;\n                      letter-spacing:2px;\n                      color:#35786d;\n                    \">ATOMIZER</p>\n\n                    <h1 style=\"\n                      margin:0 0 10px;\n                      font-size:28px;\n                      line-height:1.2;\n                    \">Your content plan</h1>\n\n                    <p style=\"\n                      margin:0;\n                      font-size:15px;\n                      line-height:1.6;\n                      color:#65736f;\n                    \">${escape(summary)}.</p>\n\n                    ${reviewCount\n                      ? `<p style=\"\n                          margin:14px 0 0;\n                          padding:12px;\n                          background:#fff8e8;\n                          color:#805600;\n                          font-size:14px;\n                          line-height:1.5;\n                        \">\n                          ${reviewCount} ${reviewCount === 1 ? 'piece needs' : 'pieces need'}\n                          review before production.\n                        </p>`\n                      : ''\n                    }\n\n                    ${sections}\n\n                    <p style=\"\n                      margin:26px 0 0;\n                      padding-top:16px;\n                      border-top:1px solid #dde7e4;\n                      font-size:12px;\n                      line-height:1.6;\n                      color:#65736f;\n                    \">\n                      Production dates are for preparing each piece.\n                      Publishing dates are for releasing it.\n                    </p>\n                  </td>\n                </tr>\n              </table>\n            </td>\n          </tr>\n        </table>\n      </body>\n      </html>\n    `\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        1104
+      ],
+      "id": "ff49e13d-ef29-4778-b39f-8b0d857f0546",
+      "name": "Build Digest"
+    },
+    {
+      "parameters": {
+        "sendTo": "creator@example.invalid",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1216,
+        1104
+      ],
+      "id": "cd1c2570-e2d9-46d8-91d4-45be83f01464",
+      "name": "Send a message",
+      "webhookId": "963a58f0-443c-41ac-82b9-b908075e2cf2"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orbit Content Ideas",
+          "cachedResultUrl": "https://example.invalid/spreadsheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 878935621,
+          "mode": "list",
+          "cachedResultName": "Content Log TEST",
+          "cachedResultUrl": "https://example.invalid/spreadsheet"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        64,
+        1104
+      ],
+      "id": "d6ed7720-8ea6-4b32-a839-498095651cb9",
+      "name": "Get row(s) in sheet",
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst incoming = $('Split Out').all()\n  .map(item => item.json);\n\nconst existingRows = $input.all()\n  .map(item => item.json);\n\nconst normalize = value =>\n  String(value ?? '').trim().toLowerCase();\n\nconst existingIds = new Set(\n  existingRows\n    .map(row => normalize(row.submission_id))\n    .filter(Boolean)\n);\n\nconst seenInBatch = new Set();\nconst newNotes = [];\n\nfor (const note of incoming) {\n  const submissionId = normalize(note.submission_id);\n\n  if (!submissionId) {\n    throw new Error('Incoming note is missing submission_id');\n  }\n\n  if (!note.raw_note || !String(note.raw_note).trim()) {\n    throw new Error(\n      `Missing raw_note for ${note.submission_id}`\n    );\n  }\n\n  if (!note.creator?.email) {\n    throw new Error(\n      `Missing creator email for ${note.submission_id}`\n    );\n  }\n\n  const creatorEmail = normalize(note.creator.email);\n\n  // Composite identity avoids collisions between creators.\n  const key = `${creatorEmail}::${submissionId}`;\n\n  // Existing Content Log rows may repeat the same submission\n  // across several content pieces.\n  const alreadyProcessed = existingRows.some(row => {\n    const sameSubmission =\n      normalize(row.submission_id) === submissionId;\n\n    const storedEmail = normalize(\n      row.creator_email ?? ''\n    );\n\n    // The Build Plan's Content Log has creator name,\n    // but does not require creator_email.\n    // Therefore submission_id remains the fallback key.\n    return sameSubmission &&\n      (!storedEmail || storedEmail === creatorEmail);\n  });\n\n  if (alreadyProcessed || seenInBatch.has(key)) {\n    continue;\n  }\n\n  seenInBatch.add(key);\n  newNotes.push({ json: note });\n}\n\nreturn newNotes;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        1104
+      ],
+      "id": "aea237e9-8f00-4754-a70b-9da3621870dd",
+      "name": "Filter New Notes"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/*\n * ATOMIZER - BUILD PIECES\n * Mode: Run Once for All Items\n * Timezone: Asia/Manila\n *\n * Converts AI content plans into scheduled pieces.\n * No external writes occur in this node.\n */\n\nconst plans = $input.all().map(item => item.json);\n\nconst TZ = 'Asia/Manila';\nconst DAY = 86400000;\n\n// Calendar-date arithmetic in UTC avoids local DST shifts.\nfunction dateAfter(days) {\n  const parts = new Intl.DateTimeFormat('en-US', {\n    timeZone: TZ,\n    year: 'numeric',\n    month: '2-digit',\n    day: '2-digit'\n  }).formatToParts(new Date());\n\n  const values = Object.fromEntries(\n    parts.map(p => [p.type, p.value])\n  );\n\n  const midnight = Date.UTC(\n    Number(values.year),\n    Number(values.month) - 1,\n    Number(values.day)\n  );\n\n  return new Date(midnight + days * DAY)\n    .toISOString().slice(0, 10);\n}\n\n// Philippine Standard Time is UTC+08:00.\nfunction calendarTime(date, hour) {\n  return `${date}T${String(hour).padStart(2, '0')}:00:00+08:00`;\n}\n\nconst RULES = {\n  youtube_long: [\n    ['A', 'Anchor', 'YouTube', 'Long-form video', 4, 7, 'anchor_title'],\n    ['S1', 'Spin-off', 'TikTok / Reels', 'Short vertical video', 7, 8, 'hook_short_video'],\n    ['S2', 'Spin-off', 'LinkedIn', 'Text post', 8, 9, 'hook_linkedin'],\n    ['S3', 'Spin-off', 'Instagram', 'Carousel', 9, 10, 'hook_carousel'],\n    ['S4', 'Spin-off', 'Blog', 'Article', 10, 11, 'hook_blog']\n  ],\n  short_video: [\n    ['A', 'Anchor', 'TikTok / Reels', 'Short vertical video', 1, 2, 'anchor_title'],\n    ['S1', 'Spin-off', 'LinkedIn', 'Text post', 2, 3, 'hook_linkedin']\n  ],\n  blog_post: [\n    ['A', 'Anchor', 'Blog', 'Article', 3, 5, 'anchor_title'],\n    ['S1', 'Spin-off', 'LinkedIn', 'Text post', 5, 6, 'hook_linkedin'],\n    ['S2', 'Spin-off', 'Instagram', 'Carousel', 6, 7, 'hook_carousel']\n  ],\n  linkedin_post: [\n    ['A', 'Anchor', 'LinkedIn', 'Text post', 1, 2, 'anchor_title'],\n    ['S1', 'Spin-off', 'TikTok / Reels', 'Short vertical video', 2, 4, 'hook_short_video']\n  ]\n};\n\nconst results = [];\n\nfor (const data of plans) {\n  const plan = data.plan ?? {};\n  const format = plan.anchor_format;\n  const rules = RULES[format];\n\n  if (!rules) {\n    throw new Error(\n      `Unsupported anchor format for ${data.submission_id}: ${format}`\n    );\n  }\n\n  if (!data.submission_id || !data.creator_email) {\n    throw new Error('Missing submission identity fields');\n  }\n\n  const review = data.needs_review === true;\n\n  for (const [\n    suffix, role, platform, pieceFormat,\n    productionOffset, publishOffset, titleField\n  ] of rules) {\n\n    const pieceId = `${data.submission_id}-${suffix}`;\n    const produceBy = dateAfter(productionOffset);\n    const publishOn = dateAfter(publishOffset);\n\n    const isAnchor = role === 'Anchor';\n\n    const title = isAnchor\n      ? (plan.anchor_title || 'Untitled content')\n      : (plan[titleField] || plan.anchor_title || 'Untitled content');\n\n    const hook = isAnchor\n      ? (plan.anchor_hook || '')\n      : (plan[titleField] || plan.anchor_hook || '');\n\n    results.push({\n      json: {\n        piece_id: pieceId,\n        submission_id: data.submission_id,\n        family_id: data.family_id ?? '',\n        similar_family_id: data.similar_family_id ?? '',\n        similarity_status: data.similarity_status ?? '',\n        match_confidence: data.match_confidence ?? '',\n        decision: data.decision ?? '',\n        angle_update: data.angle_update ?? '',\n        creator: data.creator_name,\n        creator_email: data.creator_email,\n\n        role,\n        platform,\n        format: pieceFormat,\n        title,\n        hook,\n\n        audience: plan.audience || '',\n        angle: plan.core_angle || '',\n\n        status: review ? 'Needs review' : 'Planned',\n\n        produce_by: produceBy,\n        publish_on: publishOn,\n\n        start_time: calendarTime(produceBy, 9),\n        end_time: calendarTime(produceBy, 10),\n        timezone: TZ,\n\n        event_title: `[Atomizer] ${role}: ${title}`,\n        event_description: [\n          `Content ID: ${pieceId}`,\n          `Creator: ${data.creator_name}`,\n          `Platform: ${platform}`,\n          `Format: ${pieceFormat}`,\n          `Production deadline: ${produceBy}`,\n          `Publish on: ${publishOn}`,\n          `Angle: ${plan.core_angle || ''}`,\n          `Status: ${review ? 'Needs review' : 'Planned'}`\n        ].join('\\n'),\n\n        rounds: data.round ?? 0,\n        created_at: dateAfter(0)\n      }\n    });\n  }\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        2000
+      ],
+      "id": "23a13c23-7602-45d7-8334-2442296e4b37",
+      "name": "Build Pieces"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n/*\n * ATOMIZER - ROW FOR SHEET\n * Mode: Run Once for All Items\n *\n * Maps created Google Calendar events\n * back to their original content pieces.\n */\n\nconst pieces = $('Build Pieces').all()\n  .map(item => item.json);\n\nconst events = $input.all()\n  .map(item => item.json);\n\nif (pieces.length !== events.length) {\n  throw new Error(\n    `Count mismatch: ${pieces.length} pieces, ` +\n    `${events.length} Calendar events`\n  );\n}\n\nconst rows = [];\n\nfor (let i = 0; i < pieces.length; i++) {\n  const piece = pieces[i];\n  const event = events[i];\n\n  if (!event.id) {\n    throw new Error(\n      `Missing Calendar event ID for ${piece.piece_id}`\n    );\n  }\n\n  // Verify event identity before mapping by position.\n  // This prevents silently attaching an unrelated event.\n  if (event.summary !== piece.event_title) {\n    throw new Error(\n      `Calendar event mismatch for ${piece.piece_id}`\n    );\n  }\n\n  rows.push({\n    json: {\n      piece_id: piece.piece_id,\n      submission_id: piece.submission_id,\n      family_id: piece.family_id ?? '',\n      similar_family_id: piece.similar_family_id ?? '',\n      similarity_status: piece.similarity_status ?? '',\n      match_confidence: piece.match_confidence ?? '',\n      decision: piece.decision ?? '',\n      angle_update: piece.angle_update ?? '',\n      creator: piece.creator,\n      role: piece.role,\n      platform: piece.platform,\n      format: piece.format,\n      title: piece.title,\n      hook: piece.hook,\n      audience: piece.audience,\n      angle: piece.angle,\n      status: piece.status,\n      produce_by: piece.produce_by,\n      publish_on: piece.publish_on,\n      calendar_event_id: event.id,\n      event_link: event.htmlLink ?? '',\n      rounds: piece.rounds,\n      created_at: piece.created_at\n    }\n  });\n}\n\nreturn rows;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        1232
+      ],
+      "id": "e9502fb8-ab84-409e-beb7-25122cf74eb2",
+      "name": "Row For Sheet"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orbit Content Ideas",
+          "cachedResultUrl": "https://example.invalid/spreadsheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 878935621,
+          "mode": "list",
+          "cachedResultName": "Content Log TEST",
+          "cachedResultUrl": "https://example.invalid/spreadsheet"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "piece_id"
+          ],
+          "schema": [
+            {
+              "id": "piece_id",
+              "displayName": "piece_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "submission_id",
+              "displayName": "submission_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "creator",
+              "displayName": "creator",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "role",
+              "displayName": "role",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "platform",
+              "displayName": "platform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "format",
+              "displayName": "format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "hook",
+              "displayName": "hook",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "audience",
+              "displayName": "audience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "angle",
+              "displayName": "angle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "produce_by",
+              "displayName": "produce_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "publish_on",
+              "displayName": "publish_on",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "calendar_event_id",
+              "displayName": "calendar_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_link",
+              "displayName": "event_link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "rounds",
+              "displayName": "rounds",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "family_id",
+              "displayName": "family_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "similar_family_id",
+              "displayName": "similar_family_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "similarity_status",
+              "displayName": "similarity_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_confidence",
+              "displayName": "match_confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "angle_update",
+              "displayName": "angle_update",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -48,
+        1232
+      ],
+      "id": "33cd24ca-9272-4678-baae-0c4edc1bb312",
+      "name": "Save to Sheet"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $('Row For Sheet').all();\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        128,
+        1232
+      ],
+      "id": "e85ed06b-74d2-4d72-bbcc-045952ab5a74",
+      "name": "Pass Rows"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orbit Content Ideas",
+          "cachedResultUrl": "https://example.invalid/spreadsheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1480110152,
+          "mode": "list",
+          "cachedResultName": "Similarity_TEST",
+          "cachedResultUrl": "https://example.invalid/spreadsheet"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -32,
+        1680
+      ],
+      "id": "7ee01b92-00b3-4537-b07f-050a3cb6bea4",
+      "name": "Lookup Existing Families",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst rows = $input.all().map(item => item.json);\n\nconst families = new Map();\n\nfor (const row of rows) {\n  const familyId = String(row.family_id ?? \"\").trim();\n\n  // Ignore rows without a valid family identifier.\n  if (!familyId) continue;\n\n  if (!families.has(familyId)) {\n    families.set(familyId, {\n      family_id: familyId,\n      submission_id: row.submission_id,\n      creator_email: row.creator_email,\n      angles: []\n    });\n  }\n\n  families.get(familyId).angles.push({\n    title: row.title,\n    summary: row.summary,\n    platform: row.platform,\n    format: row.format,\n    theme: row.theme\n  });\n}\n\nreturn Array.from(families.values()).map(family => ({\n  json: {\n    ...family,\n    angle_count: family.angles.length\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        1680
+      ],
+      "id": "fe0f1ef5-8b90-4cd4-9557-09f079549834",
+      "name": "Group Existing Families"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst items = $input.all();\n\nreturn items.map(item => {\n  const data = item.json;\n  const plan = data.plan ?? {};\n\n  const title = String(\n    plan.anchor_title ?? ''\n  ).trim();\n\n  const summary = String(\n    plan.core_angle ?? ''\n  ).trim();\n\n  const theme = String(\n    plan.audience ?? ''\n  ).trim();\n\n  return {\n    json: {\n      ...data,\n\n      title,\n      summary,\n      theme,\n\n      format: plan.anchor_format ?? '',\n\n      comparison_text: [\n        title,\n        summary,\n        theme\n      ].filter(Boolean).join(' | '),\n\n      comparison_status:\n        title && summary\n          ? 'Ready for comparison'\n          : 'Insufficient information'\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        1888
+      ],
+      "id": "9f535949-4f0c-408b-a49a-2bc6b4090485",
+      "name": "Prepare Incoming Idea"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        352,
+        1872
+      ],
+      "id": "d21eeffa-9c29-41f7-aa4c-52289f395ebd",
+      "name": "Combine Similarity Inputs"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst records = $input.all().map(item => item.json);\n\n// Identify the incoming idea.\nconst incomingIdeas = records.filter(\n  record => typeof record.comparison_text === \"string\"\n);\n\n// Identify existing content families.\nconst existingFamilies = records.filter(\n  record =>\n    typeof record.family_id === \"string\" &&\n    Array.isArray(record.angles)\n);\n\n// Validate that exactly one incoming idea is present.\nif (incomingIdeas.length !== 1) {\n  throw new Error(\n    `Expected 1 incoming idea, found ${incomingIdeas.length}`\n  );\n}\n\nconst incoming = incomingIdeas[0];\n\n// Only compare against families belonging to this creator.\nconst eligibleFamilies = existingFamilies.filter(\n  family =>\n    String(family.creator_email ?? \"\").trim().toLowerCase() ===\n    String(incoming.creator_email ?? \"\").trim().toLowerCase()\n);\n\nreturn [{\n  json: {\n    incoming_idea: incoming,\n    existing_families: eligibleFamilies,\n    incoming_count: incomingIdeas.length,\n    family_count: eligibleFamilies.length,\n    validation_status:\n      incoming.comparison_status === \"Ready for comparison\"\n        ? \"Validated\"\n        : \"Insufficient information\"\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        2224
+      ],
+      "id": "1a93fcc9-a614-4c92-9f10-f3089187a6db",
+      "name": "Evaluate Idea Similarity"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst data = $input.first().json;\n\nif (data.validation_status !== \"Validated\") {\n  return [{\n    json: {\n      ...data,\n      candidates: [],\n      candidate_count: 0,\n      preparation_status: \"Needs clarification\"\n    }\n  }];\n}\n\nconst incoming = data.incoming_idea;\nconst families = data.existing_families ?? [];\n\nconst stopwords = new Set([\n  \"the\", \"and\", \"for\", \"with\", \"from\", \"this\",\n  \"that\", \"into\", \"about\", \"your\", \"you\",\n  \"are\", \"was\", \"were\", \"have\", \"has\",\n  \"how\", \"why\", \"what\", \"its\", \"our\"\n]);\n\nfunction tokenize(text) {\n  return new Set(\n    String(text ?? \"\")\n      .toLowerCase()\n      .replace(/[^a-z0-9]+/g, \" \")\n      .split(/\\s+/)\n      .filter(word =>\n        word.length > 2 && !stopwords.has(word)\n      )\n  );\n}\n\nfunction overlapScore(a, b) {\n  const tokensA = tokenize(a);\n  const tokensB = tokenize(b);\n\n  if (!tokensA.size || !tokensB.size) return 0;\n\n  const intersection = [...tokensA]\n    .filter(word => tokensB.has(word)).length;\n\n  const union = new Set([...tokensA, ...tokensB]).size;\n\n  return Number((intersection / union).toFixed(4));\n}\n\nconst candidates = families.map(family => {\n  const angleScores = (family.angles ?? []).map(angle => {\n    const text = [\n      angle.title,\n      angle.summary,\n      angle.theme\n    ].filter(Boolean).join(\" | \");\n\n    return overlapScore(incoming.comparison_text, text);\n  });\n\n  const keywordScore = angleScores.length\n    ? Math.max(...angleScores)\n    : 0;\n\n  return {\n    family_id: family.family_id,\n    angle_count: family.angle_count,\n    angles: family.angles,\n    keyword_score: keywordScore\n  };\n});\n\ncandidates.sort(\n  (a, b) => b.keyword_score - a.keyword_score\n);\n\nreturn [{\n  json: {\n    incoming_idea: incoming,\n    candidates,\n    candidate_count: candidates.length,\n    preparation_status: \"Ready for semantic comparison\"\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        2224
+      ],
+      "id": "9d9c96ba-82b3-4cf1-98fc-1e5e993288e8",
+      "name": "Prepare Similarity Candidates"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=\n{{ `You are Atomizer's Semantic Idea Similarity Evaluator.\n\nTASK:\nEvaluate whether the incoming creator idea is conceptually similar to any existing content family.\n\nINCOMING IDEA:\n${JSON.stringify($json.incoming_idea)}\n\nEXISTING CONTENT FAMILIES:\n${JSON.stringify($json.candidates)}\n\nSCORING RULES:\n- Evaluate underlying meaning, not just shared keywords.\n- Consider the core concept, intended audience, purpose, and content angle.\n- Different wording can describe the same idea.\n- Shared broad topics do not automatically indicate duplication.\n- Treat keyword_score only as supporting evidence.\n- Evaluate every supplied family.\n- Never invent family IDs.\n- Never recommend overwriting existing content.\n\nReturn ONLY a valid JSON object with this structure:\n\n{\n  \"matches\": [\n    {\n      \"family_id\": \"FAM-0001\",\n      \"semantic_score\": 0.0,\n      \"reason\": \"Brief explanation of the conceptual relationship\",\n      \"suggested_angles\": [\n        \"Alternative content angle 1\",\n        \"Alternative content angle 2\"\n      ]\n    }\n  ]\n}\n\nREQUIREMENTS:\n- semantic_score must be between 0 and 1.\n- Return one match entry for every supplied family.\n- Sort matches by semantic_score, highest first.\n- Suggested angles must offer meaningful differentiation.\n- Do not include Markdown fences or commentary outside JSON.\n- The score is a semantic similarity estimate, not a calibrated probability.\n` }}\n",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1008,
+        2224
+      ],
+      "id": "0b608e73-6410-45fc-8ab4-565088914b45",
+      "name": "Gemini Semantic Similarity",
+      "retryOnFail": true,
+      "maxTries": 4,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-flash-lite-latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        976,
+        2448
+      ],
+      "id": "4d465fd5-5fb7-4cc8-9009-798322ecfd78",
+      "name": "Google Gemini Chat Model1"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "\n{\n  \"matches\": [\n    {\n      \"family_id\": \"FAM-0001\",\n      \"semantic_score\": 0.87,\n      \"reason\": \"Both ideas explore the transition from traditional work to asynchronous workflows using automation.\",\n      \"suggested_angles\": [\n        \"How beginners can transition to asynchronous work using n8n\",\n        \"Common mistakes when automating daily workflows\"\n      ]\n    }\n  ]\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1200,
+        2448
+      ],
+      "id": "0f753885-ec4d-476d-9c77-d9e6d5fe408c",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst aiResponse = $input.first().json.output;\n\nconst source = $(\"Prepare Similarity Candidates\")\n  .first().json;\n\nconst incoming = source.incoming_idea;\nconst candidates = source.candidates ?? [];\n\nconst candidateMap = new Map(\n  candidates.map(candidate => [\n    candidate.family_id,\n    candidate\n  ])\n);\n\nconst errors = [];\nconst validatedMatches = [];\nconst seenIds = new Set();\n\nif (!Array.isArray(aiResponse?.matches)) {\n  errors.push(\"AI response has no valid matches array\");\n} else {\n  for (const match of aiResponse.matches) {\n    const id = match?.family_id;\n    const candidate = candidateMap.get(id);\n\n    if (!candidate) {\n      errors.push(`Unknown family ID: ${id}`);\n      continue;\n    }\n\n    if (seenIds.has(id)) {\n      errors.push(`Duplicate family ID: ${id}`);\n      continue;\n    }\n\n    seenIds.add(id);\n\n    if (\n      typeof match.semantic_score !== \"number\" ||\n      !Number.isFinite(match.semantic_score) ||\n      match.semantic_score < 0 ||\n      match.semantic_score > 1\n    ) {\n      errors.push(`Invalid semantic score: ${id}`);\n      continue;\n    }\n\n    if (\n      typeof match.reason !== \"string\" ||\n      !match.reason.trim()\n    ) {\n      errors.push(`Missing explanation: ${id}`);\n      continue;\n    }\n\n    if (\n      !Array.isArray(match.suggested_angles) ||\n      match.suggested_angles.length < 2 ||\n      !match.suggested_angles.every(\n        angle =>\n          typeof angle === \"string\" &&\n          angle.trim().length > 0\n      )\n    ) {\n      errors.push(`Invalid suggested angles: ${id}`);\n      continue;\n    }\n\n    validatedMatches.push({\n      family_id: id,\n      keyword_score: candidate.keyword_score,\n      semantic_score: match.semantic_score,\n      reason: match.reason.trim(),\n      suggested_angles: match.suggested_angles\n        .map(angle => angle.trim())\n    });\n  }\n}\n\nfor (const candidate of candidates) {\n  if (!seenIds.has(candidate.family_id)) {\n    errors.push(\n      `Missing candidate: ${candidate.family_id}`\n    );\n  }\n}\n\nvalidatedMatches.sort(\n  (a, b) => b.semantic_score - a.semantic_score\n);\n\nreturn [{\n  json: {\n    incoming_idea: incoming,\n    validated_matches:\n      errors.length === 0 ? validatedMatches : [],\n    match_count:\n      errors.length === 0 ? validatedMatches.length : 0,\n    validation_status:\n      errors.length === 0\n        ? \"Passed\"\n        : \"Failed\",\n    validation_errors: errors\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        2224
+      ],
+      "id": "357ead31-ff06-4610-b635-1118deba9d8a",
+      "name": "Validate Semantic Matches"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst data = $input.first().json;\nconst incoming = data.incoming_idea ?? {};\nconst matches = data.validated_matches ?? [];\n\n// Existing family records from the earlier lookup.\nconst existingFamilies =\n  $(\"Group Existing Families\")\n    .all()\n    .map(item => item.json);\n\nconst threshold = 0.80;\n\nconst submissionId =\n  String(incoming.submission_id ?? \"\").trim();\n\nconst creatorEmail =\n  String(incoming.creator_email ?? \"\")\n    .trim()\n    .toLowerCase();\n\n// Check whether this submission already exists.\nconst duplicateFamily = existingFamilies.find(family =>\n  String(family.submission_id ?? \"\").trim() === submissionId &&\n  String(family.creator_email ?? \"\")\n    .trim()\n    .toLowerCase() === creatorEmail\n);\n\nconst bestMatch = matches.length\n  ? [...matches].sort(\n      (a, b) => b.semantic_score - a.semantic_score\n    )[0]\n  : null;\n\nlet decision;\nlet similarityStatus;\nlet similarFamilyId = \"\";\nlet matchConfidence = null;\nlet suggestedAngles = [];\nlet reason = \"\";\nlet shouldCreateFamily = false;\n\nif (data.validation_status !== \"Passed\") {\n  decision = \"Manual review required\";\n  similarityStatus = \"Validation failed\";\n  reason = (data.validation_errors ?? []).join(\"; \");\n\n} else if (!submissionId || !creatorEmail) {\n  decision = \"Manual review required\";\n  similarityStatus = \"Missing identity fields\";\n  reason = \"Submission ID or creator email is missing\";\n\n} else if (duplicateFamily) {\n  decision = \"Existing submission detected\";\n  similarityStatus = \"Duplicate submission\";\n  similarFamilyId = duplicateFamily.family_id;\n  reason = \"This submission ID already exists for this creator\";\n\n} else if (\n  bestMatch &&\n  bestMatch.semantic_score >= threshold\n) {\n  decision = \"New family created\";\n  similarityStatus = \"Similar idea flagged\";\n  similarFamilyId = bestMatch.family_id;\n  matchConfidence = bestMatch.semantic_score;\n  suggestedAngles = bestMatch.suggested_angles;\n  reason = bestMatch.reason;\n  shouldCreateFamily = true;\n\n} else {\n  decision = \"New family created\";\n  similarityStatus = \"No significant similarity\";\n  matchConfidence = bestMatch?.semantic_score ?? null;\n  reason = bestMatch\n    ? \"No existing family reached the similarity threshold\"\n    : \"No existing family matches were available\";\n  shouldCreateFamily = true;\n}\n\nreturn [{\n  json: {\n    ...incoming,\n    similar_family_id: similarFamilyId,\n    similarity_status: similarityStatus,\n    match_confidence: matchConfidence,\n    decision,\n    angle_update: suggestedAngles.join(\" | \"),\n    decision_reason: reason,\n    should_create_family: shouldCreateFamily,\n    similarity_threshold: threshold,\n    family_id: \"\",\n    decision_status: \"Evaluated\"\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        2224
+      ],
+      "id": "c3905d91-1ec1-45de-b73a-3a442f1c37d1",
+      "name": "Determine Family Decision"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst decision = $input.first().json;\n\nconst existingFamilies = $(\"Group Existing Families\")\n  .all()\n  .map(item => item.json);\n\nif (decision.should_create_family !== true) {\n  return [{\n    json: {\n      ...decision,\n      family_id: \"\",\n      family_creation_status: \"Skipped\"\n    }\n  }];\n}\n\n// Find the highest existing numeric family ID.\nconst existingNumbers = existingFamilies\n  .map(family => {\n    const match = String(family.family_id ?? \"\")\n      .match(/^FAM-(\\d+)$/);\n\n    return match ? Number(match[1]) : null;\n  })\n  .filter(number =>\n    Number.isSafeInteger(number) && number >= 0\n  );\n\nconst highestId = existingNumbers.length\n  ? Math.max(...existingNumbers)\n  : 0;\n\nconst newFamilyId =\n  `FAM-${String(highestId + 1).padStart(4, \"0\")}`;\n\nreturn [{\n  json: {\n    ...decision,\n    family_id: newFamilyId,\n    decision: \"New family proposed\",\n    family_creation_status: \"Pending persistence\"\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        2224
+      ],
+      "id": "b516ac61-7bb7-43d1-824c-a2389171b90f",
+      "name": "Assign New Family ID"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "559b9eea-bcc7-4ed2-96aa-0505c9f51225",
+              "leftValue": "={{ $json.should_create_family }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2032,
+        2224
+      ],
+      "id": "a7c82a4d-c269-4793-8f1d-7670a416cb34",
+      "name": "Allow New Family Creation"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst items = $input.all();\n\nconst requiredFields = [\n  \"submission_id\",\n  \"creator_email\",\n  \"title\",\n  \"summary\",\n  \"family_id\"\n];\n\nreturn items.map(item => {\n  const data = item.json;\n\n  if (data.should_create_family !== true) {\n    throw new Error(\"Family creation is not authorized\");\n  }\n\n  if (data.family_creation_status !== \"Pending persistence\") {\n    throw new Error(\"Family is not awaiting persistence\");\n  }\n\n  for (const field of requiredFields) {\n    if (!String(data[field] ?? \"\").trim()) {\n      throw new Error(`Missing required field: ${field}`);\n    }\n  }\n\n  if (!/^FAM-\\d{4,}$/.test(data.family_id)) {\n    throw new Error(\"Invalid family ID format\");\n  }\n\n  if (\n    data.similar_family_id &&\n    data.similar_family_id === data.family_id\n  ) {\n    throw new Error(\"A family cannot reference itself\");\n  }\n\n  return {\n    json: {\n      submission_id: data.submission_id,\n      created_at: new Date().toISOString(),\n      creator_name: data.creator_name ?? \"\",\n      creator_email: data.creator_email,\n      submitted_at: data.submitted_at ?? \"\",\n      title: data.title,\n      summary: data.summary,\n      platform: data.platform ?? \"\",\n      format: data.format ?? \"\",\n      theme: data.theme ?? \"\",\n      next_action: data.next_action ?? \"\",\n      priority: data.priority ?? \"\",\n      needs_clarification: data.needs_clarification ?? \"\",\n      status: \"Pending review\",\n      calendar_event_id: \"\",\n      family_id: data.family_id,\n      similar_family_id: data.similar_family_id ?? \"\",\n      similarity_status: data.similarity_status ?? \"\",\n      match_confidence: data.match_confidence ?? \"\",\n      decision: \"New family proposed\",\n      angle_update: data.angle_update ?? \"\"\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        2128
+      ],
+      "id": "f98f18ea-15b6-4516-b7e8-cd5e73a5fdfe",
+      "name": "Prepare Family Record"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orbit Content Ideas",
+          "cachedResultUrl": "https://example.invalid/spreadsheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1480110152,
+          "mode": "list",
+          "cachedResultName": "Similarity_TEST",
+          "cachedResultUrl": "https://example.invalid/spreadsheet"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2480,
+        2128
+      ],
+      "id": "e5f50460-3ce6-4c04-b6b2-74df1fe1ec6a",
+      "name": "Check Existing Records Before Write"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst proposed = $(\"Prepare Family Record\").first().json;\n\nconst existingRows = $input.all().map(item => item.json);\n\nconst errors = [];\n\nconst normalize = value =>\n  String(value ?? \"\").trim().toLowerCase();\n\nconst familyId = String(proposed.family_id ?? \"\").trim();\nconst submissionId = normalize(proposed.submission_id);\nconst creatorEmail = normalize(proposed.creator_email);\n\n// Validate required identifiers.\nif (!/^FAM-\\d{4,}$/.test(familyId)) {\n  errors.push(\"Invalid or missing family ID\");\n}\n\nif (!submissionId) {\n  errors.push(\"Missing submission ID\");\n}\n\nif (!creatorEmail) {\n  errors.push(\"Missing creator email\");\n}\n\n// Check for an existing family ID.\nconst familyCollision = existingRows.some(row =>\n  normalize(row.family_id) === normalize(familyId)\n);\n\nif (familyCollision) {\n  errors.push(`Family ID already exists: ${familyId}`);\n}\n\n// Check for a repeated submission by the same creator.\nconst submissionCollision = existingRows.some(row =>\n  normalize(row.submission_id) === submissionId &&\n  normalize(row.creator_email) === creatorEmail\n);\n\nif (submissionCollision) {\n  errors.push(\n    \"Submission already exists for this creator\"\n  );\n}\n\n// Verify the creation decision.\nconst decision = $(\"Assign New Family ID\").first().json;\n\nif (decision.should_create_family !== true) {\n  errors.push(\"Family creation was not authorized\");\n}\n\nif (decision.family_id !== familyId) {\n  errors.push(\"Proposed family ID does not match decision\");\n}\n\nif (\n  decision.family_creation_status !==\n  \"Pending persistence\"\n) {\n  errors.push(\"Invalid family creation status\");\n}\n\nconst writeAllowed = errors.length === 0;\n\nreturn [{\n  json: {\n    ...proposed,\n    write_allowed: writeAllowed,\n    uniqueness_status: writeAllowed\n      ? \"Passed\"\n      : \"Blocked\",\n    uniqueness_errors: errors,\n    existing_rows_checked: existingRows.length,\n    family_id_collision: familyCollision,\n    submission_collision: submissionCollision\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        2128
+      ],
+      "id": "433aef0d-fb45-4478-851b-84383bcb118b",
+      "name": "Validate Pre-Write Uniqueness"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "716068c3-d9c4-49a1-9184-54b1d5f4ee4a",
+              "leftValue": "={{ $json.write_allowed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2928,
+        2128
+      ],
+      "id": "07a20aca-4388-448d-960a-5b05fe5536f5",
+      "name": "Authorize Family Write"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "=\n{{ Object.fromEntries([\n  \"submission_id\",\n  \"creator_name\",\n  \"creator_email\",\n  \"submitted_at\",\n  \"created_at\",\n  \"title\",\n  \"summary\",\n  \"platform\",\n  \"format\",\n  \"theme\",\n  \"next_action\",\n  \"priority\",\n  \"needs_clarification\",\n  \"status\",\n  \"calendar_event_id\",\n  \"family_id\",\n  \"similar_family_id\",\n  \"similarity_status\",\n  \"match_confidence\",\n  \"decision\",\n  \"angle_update\"\n].map(key => [key, $json[key] ?? \"\"])) }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        3152,
+        2000
+      ],
+      "id": "1a006a34-53ba-47a5-80c0-a3f6e06f71ee",
+      "name": "Finalize Sheet Columns"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "10792fdf-e3de-4c47-bffb-b28b9bba98a4",
+              "name": "write_status",
+              "value": "Rejected - duplicate record",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        3152,
+        2224
+      ],
+      "id": "0146aaf0-4546-4440-95db-da492ae9c65f",
+      "name": "Record Write Rejection"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orbit Content Ideas",
+          "cachedResultUrl": "https://example.invalid/spreadsheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1480110152,
+          "mode": "list",
+          "cachedResultName": "Similarity_TEST",
+          "cachedResultUrl": "https://example.invalid/spreadsheet"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "submission_id",
+              "displayName": "submission_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "creator_name",
+              "displayName": "creator_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "creator_email",
+              "displayName": "creator_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "submitted_at",
+              "displayName": "submitted_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "platform",
+              "displayName": "platform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "format",
+              "displayName": "format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "theme",
+              "displayName": "theme",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "next_action",
+              "displayName": "next_action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "needs_clarification",
+              "displayName": "needs_clarification",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "calendar_event_id",
+              "displayName": "calendar_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "family_id",
+              "displayName": "family_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "similar_family_id",
+              "displayName": "similar_family_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "similarity_status",
+              "displayName": "similarity_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_confidence",
+              "displayName": "match_confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "angle_update",
+              "displayName": "angle_update",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3360,
+        2000
+      ],
+      "id": "ce298c70-9a37-4b65-bd36-8d25f688f6b9",
+      "name": "Persist New Family to Similarity Dev"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "7a379c1f-8319-4081-8c7e-06d2785c3fb3",
+              "leftValue": "={{ $json.needs_input }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        -256,
+        1488
+      ],
+      "id": "4bdcaec6-e7a8-4d4d-9dda-9093796ca963",
+      "name": "Needs User Input?"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst savedRows = $input.all();\nconst original = $(\"Assign New Family ID\").first().json;\n\nif (!original.plan?.anchor_format) {\n  throw new Error(\"Original content plan is missing\");\n}\n\nreturn savedRows.map(item => {\n  const saved = item.json;\n\n  if (saved.submission_id !== original.submission_id) {\n    throw new Error(\"Submission ID mismatch after persistence\");\n  }\n\n  return {\n    json: {\n      ...original,\n      ...saved,\n      plan: original.plan,\n      family_id: saved.family_id || original.family_id\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        2000
+      ],
+      "id": "669486e9-127f-4430-b640-dc2f423f13b3",
+      "name": "Restore Content Plan"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_CALENDAR_ID",
+          "mode": "list",
+          "cachedResultName": "Atomizer TEST"
+        },
+        "start": "={{ $json.start_time }}",
+        "end": "={{ $json.end_time }}",
+        "additionalFields": {
+          "description": "={{ $json.event_description }}",
+          "summary": "={{ $json.event_title }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1472,
+        2000
+      ],
+      "id": "53956425-9e99-48ef-9243-6030d90c57b8",
+      "name": "Create an event"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3344,
+        2240
+      ],
+      "id": "9cbf29e5-a9af-44f2-8e4e-abfa9493de70",
+      "name": "Similarity Done"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Raw Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Raw Notes": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Map Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Input": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Build Digest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Plan": {
+      "main": [
+        [
+          {
+            "node": "Needs User Input?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Creator": {
+      "main": [
+        [
+          {
+            "node": "Read Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Digest": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Reply": {
+      "main": [
+        [
+          {
+            "node": "Plan Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Filter New Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter New Notes": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Pieces": {
+      "main": [
+        [
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row For Sheet": {
+      "main": [
+        [
+          {
+            "node": "Save to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Pass Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Existing Families": {
+      "main": [
+        [
+          {
+            "node": "Group Existing Families",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group Existing Families": {
+      "main": [
+        [
+          {
+            "node": "Combine Similarity Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Incoming Idea": {
+      "main": [
+        [
+          {
+            "node": "Combine Similarity Inputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine Similarity Inputs": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Idea Similarity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Idea Similarity": {
+      "main": [
+        [
+          {
+            "node": "Prepare Similarity Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Similarity Candidates": {
+      "main": [
+        [
+          {
+            "node": "Gemini Semantic Similarity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Semantic Similarity": {
+      "main": [
+        [
+          {
+            "node": "Validate Semantic Matches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Gemini Semantic Similarity",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Gemini Semantic Similarity",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Semantic Matches": {
+      "main": [
+        [
+          {
+            "node": "Determine Family Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Family Decision": {
+      "main": [
+        [
+          {
+            "node": "Assign New Family ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign New Family ID": {
+      "main": [
+        [
+          {
+            "node": "Allow New Family Creation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Allow New Family Creation": {
+      "main": [
+        [
+          {
+            "node": "Prepare Family Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Similarity Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Family Record": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Records Before Write",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Records Before Write": {
+      "main": [
+        [
+          {
+            "node": "Validate Pre-Write Uniqueness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Pre-Write Uniqueness": {
+      "main": [
+        [
+          {
+            "node": "Authorize Family Write",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorize Family Write": {
+      "main": [
+        [
+          {
+            "node": "Finalize Sheet Columns",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record Write Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Sheet Columns": {
+      "main": [
+        [
+          {
+            "node": "Persist New Family to Similarity Dev",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "Persist New Family to Similarity Dev": {
+      "main": [
+        [
+          {
+            "node": "Similarity Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs User Input?": {
+      "main": [
+        [
+          {
+            "node": "Ask Creator",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lookup Existing Families",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Incoming Idea",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Content Plan": {
+      "main": [
+        [
+          {
+            "node": "Build Pieces",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pass Rows": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event": {
+      "main": [
+        [
+          {
+            "node": "Row For Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Write Rejection": {
+      "main": [
+        [
+          {
+            "node": "Similarity Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Similarity Done": {
+      "main": [
+        [
+          {
+            "node": "Restore Content Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [
+    {
+      "id": "57dd8a80-ca00-4454-8d24-4362d813e117",
+      "name": "Prevent Repeated Submissions",
+      "nodeIds": [
+        "d6ed7720-8ea6-4b32-a839-498095651cb9",
+        "aea237e9-8f00-4754-a70b-9da3621870dd"
+      ]
+    },
+    {
+      "id": "6a400b0f-ec67-45d9-8d97-83d3411a7c74",
+      "name": "Send Content Summary",
+      "nodeIds": [
+        "ff49e13d-ef29-4778-b39f-8b0d857f0546",
+        "cd1c2570-e2d9-46d8-91d4-45be83f01464"
+      ]
+    },
+    {
+      "id": "f1cb1051-8cb8-4c06-8612-7d52a8d96b39",
+      "name": "Non-Destrcutive Similarity Engine",
+      "nodeIds": [
+        "1a93fcc9-a614-4c92-9f10-f3089187a6db",
+        "9d9c96ba-82b3-4cf1-98fc-1e5e993288e8",
+        "0b608e73-6410-45fc-8ab4-565088914b45",
+        "4d465fd5-5fb7-4cc8-9009-798322ecfd78",
+        "0f753885-ec4d-476d-9c77-d9e6d5fe408c",
+        "357ead31-ff06-4610-b635-1118deba9d8a",
+        "c3905d91-1ec1-45de-b73a-3a442f1c37d1",
+        "b516ac61-7bb7-43d1-824c-a2389171b90f",
+        "a7c82a4d-c269-4793-8f1d-7670a416cb34",
+        "f98f18ea-15b6-4516-b7e8-cd5e73a5fdfe",
+        "e5f50460-3ce6-4c04-b6b2-74df1fe1ec6a",
+        "433aef0d-fb45-4478-851b-84383bcb118b",
+        "07a20aca-4388-448d-960a-5b05fe5536f5",
+        "1a006a34-53ba-47a5-80c0-a3f6e06f71ee",
+        "0146aaf0-4546-4440-95db-da492ae9c65f",
+        "ce298c70-9a37-4b65-bd36-8d25f688f6b9",
+        "9cbf29e5-a9af-44f2-8e4e-abfa9493de70"
+      ]
+    },
+    {
+      "id": "19be1fff-087a-4f19-b277-74e5b2cb9264",
+      "name": "Schedule & Persist Content",
+      "nodeIds": [
+        "23a13c23-7602-45d7-8334-2442296e4b37",
+        "53956425-9e99-48ef-9243-6030d90c57b8",
+        "669486e9-127f-4430-b640-dc2f423f13b3"
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "updatedAt": "2026-07-17T14:14:08.097Z",
+      "createdAt": "2026-07-17T14:14:08.097Z",
+      "id": "kgbsGznzfbzse9Mv",
+      "name": "practice"
+    },
+    {
+      "updatedAt": "2026-10-22T13:19:33.633Z",
+      "createdAt": "2026-10-22T13:19:33.633Z",
+      "id": "nFYdd8TmKDo6LcSj",
+      "name": "Sub-workflow"
+    }
+  ]
+}
