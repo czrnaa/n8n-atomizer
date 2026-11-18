@@ -31,8 +31,6 @@ The central design choice is non-destructive similarity handling: a related idea
 | Czerina Abendanio | Workflow and Data Automation Engineer | Developed the non-destructive similarity engine, worked on the Sheets and Calendar pipeline, organized the n8n nodes, and tested data integrity. |
 | Reievre Dacula | AI Communication Automation Developer | Worked on the Gmail digest and creator communication, improved email formatting, and collaborated on the clarification flow. |
 
-Names above are placeholders and should be replaced with the teammates' preferred names before final portfolio use.
-
 ## Architecture
 
 ```text
@@ -98,4 +96,4 @@ The sanitized n8n workflow export is available at [workflows/atomizer-sanitized.
     └── workflows/
 ```
 
-The `private/` directory is retained locally for traceability but is intentionally excluded from publication. Add sanitized workflow examples and reviewed media under `assets/` only after completing the publication checklist.
+The `private/` directory is retained locally for traceability but is intentionally excluded from publication.
